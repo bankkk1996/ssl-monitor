@@ -2,11 +2,11 @@ import { PrismaClient } from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';
 
 const prisma = new PrismaClient();
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+const supabaseClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 export default async function handler(req, res) {
     const token = req.headers.authorization?.split(' ')[1];
-    const { data: { user: authUser } } = await supabase.auth.getUser(token);
+    const { data: { user: authUser } } = await supabaseClient.auth.getUser(token);
     
     if (!authUser) return res.status(401).json({ error: 'Unauthorized' });
 
