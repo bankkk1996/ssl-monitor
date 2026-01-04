@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; transition: 0.3s; }
+        :root { --bg: #f8fafc; --card: #fff; --text: #1e293b; }
+        [data-theme="dark"] { --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; }
+        [data-theme="red"] { --bg: #fff1f2; --card: #fff; --text: #881337; }
+        body { background: var(--bg); color: var(--text); }
+        .card { background: var(--card); }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen p-6 flex flex-col items-center">
+        
+        <div v-if="!session" class="mt-20 w-full max-w-sm card p-8 rounded-2xl shadow-xl text-center">
+            <h1 class="text-2xl font-bold mb-6">เข้าสู่ระบบ Monitor</h1>
+            <input v-model="email" placeholder="Email" class="w-full p-3 border rounded-lg mb-3 text-black">
+            <input v-model="password" type="password" placeholder="Password" class="w-full p-3 border rounded-lg mb-6 text-black">
+            <button @click="auth('signIn')" class="w-full bg-blue-600 text-white py-3 rounded-lg mb-2">Login</button>
+            <button @click="auth('signUp')" class="w-full bg-gray-200 text-gray-800 py-3 rounded-lg">Register</button>
+        </div>
+
+        <div v-else class="w-full max-w-6xl">
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold flex items-center gap-2">
+                        <i class="fa-solid fa-satellite-dish text-blue-500"></i> Monitoring
+                        <span v-if="isAdmin" class="bg-purple-600 text-white text-xs px-2 py-1 rounded-full">ADMIN</span>
+                    </h1>
+                    <p class="text-sm opacity-60">{{ session.user.email }}</p>
+                </div>
+                <div class="flex gap-2">
+                    <button @click="setTheme('blue')" class="w-6 h-6 rounded-full bg-blue-500"></button>
+                    <button @click="setTheme('dark')" class="w-6 h-6 rounded-full bg-slate-800 border border-white"></button>
+                    <button @click="logout" class="ml-4 text-sm text-red-500">Logout</button>
+                </div>
+            </div>
+
+            <div class="card p-4 rounded-xl shadow-sm mb-8 flex gap-2 flex-col md:flex-row">
+                <input v-model="newDomain" placeholder="example.com" class="flex-1 p-2 bg-transparent border rounded text-black">
+                <select v-model="newPriority" class="p-2 border rounded bg-transparent text-black">
+                    <option value="Normal">Normal</option>
+                    <option value="High">High</option>
+                    <option value="Low">Low</option>
+                </select>
+                <button @click="addDomain" :disabled="loading" class="bg-blue-600 text-white px-6 py-2 rounded">
+                    <i v-if="loading" class="fa-solid fa-spinner fa-spin"></i> เพิ่ม
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div v-for="d in domains" :key="d.id" class="card p-5 rounded-xl shadow-sm border relative group overflow-hidden">
+                    
+                    <div class="absolute left-0 top-0 bottom-0 w-1.5" :class="d.isAlive ? 'bg-green-500' : 'bg-red-600 animate-pulse'"></div>
+
+                    <div v-if="isAdmin && d.user.email !== session.user.email" class="absolute top-2 right-2 text-[10px] bg-gray-200 text-gray-600 px-2 rounded">
+                        {{ d.user.email }}
+                    </div>
+
+                    <button @click="del(d.id)" class="absolute bottom-2 right-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+
+                    <div class="pl-3">
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="font-bold text-lg truncate" :title="d.domainName">{{ d.domainName }}</h3>
+                            <span v-if="!d.isAlive" class="text-xs bg-red-100 text-red-700 px-2 rounded font-bold">DOWN</span>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="font-bold"><i class="fa-solid fa-lock"></i> SSL</span>
+                                <span :class="color(d.sslDaysLeft)">{{ d.sslDaysLeft || '?' }} วัน</span>
+                            </div>
+                            <div class="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                                <div class="h-full transition-all duration-500" :class="bg(d.sslDaysLeft)" :style="{width: pct(d.sslDaysLeft, 90)+'%'}"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="font-bold"><i class="fa-solid fa-globe"></i> Domain</span>
+                                <span :class="color(d.domainDaysLeft)">{{ d.domainDaysLeft || '?' }} วัน</span>
+                            </div>
+                            <div class="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                                <div class="h-full transition-all duration-500" :class="bg(d.domainDaysLeft)" :style="{width: pct(d.domainDaysLeft, 365)+'%'}"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        const supabase = supabase.createClient('ใส่_NEXT_PUBLIC_SUPABASE_URL', 'ใส่_NEXT_PUBLIC_SUPABASE_ANON_KEY');
+
+        createApp({
+            data() { return { session: null, email: '', password: '', domains: [], newDomain: '', newPriority: 'Normal', isAdmin: false, loading: false } },
+            async mounted() {
+                const { data } = await supabase.auth.getSession();
+                this.session = data.session;
+                if(this.session) this.fetchData();
+            },
+            methods: {
+                async auth(type) {
+                    const { error } = type === 'signUp' 
+                        ? await supabase.auth.signUp({ email: this.email, password: this.password })
+                        : await supabase.auth.signInWithPassword({ email: this.email, password: this.password });
+                    if(!error && type === 'signIn') { window.location.reload(); }
+                    else if(!error) alert('Check email!');
+                },
+                async logout() { await supabase.auth.signOut(); window.location.reload(); },
+                async fetchData() {
+                    const res = await fetch('/api/domains', { headers: { 'Authorization': `Bearer ${this.session.access_token}` } });
+                    const data = await res.json();
+                    this.domains = data.domains;
+                    this.isAdmin = data.isAdmin;
+                    this.setTheme(data.theme, false);
+                },
+                async addDomain() {
+                    this.loading = true;
+                    await fetch('/api/domains', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.session.access_token}` },
+                        body: JSON.stringify({ domainName: this.newDomain, priority: this.newPriority })
+                    });
+                    this.newDomain = ''; this.loading = false;
+                    this.fetchData(); // Refresh list (Note: First time data might be empty until cron runs)
+                },
+                async del(id) {
+                    if(!confirm('Delete?')) return;
+                    await fetch(`/api/domains?id=${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${this.session.access_token}` } });
+                    this.fetchData();
+                },
+                async setTheme(theme, save = true) {
+                    document.body.setAttribute('data-theme', theme);
+                    if(save) fetch('/api/user', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.session.access_token}` }, body: JSON.stringify({ theme }) });
+                },
+                pct(val, max) { return val ? Math.min((val/max)*100, 100) : 0 },
+                color(val) { return val <= 30 ? 'text-red-500 font-bold' : 'text-green-600' },
+                bg(val) { return val <= 30 ? 'bg-red-500' : 'bg-green-500' }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>

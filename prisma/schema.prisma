@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+model User {
+  id        String   @id // User ID จาก Supabase
+  email     String   @unique
+  role      String   @default("USER") // 'USER' หรือ 'ADMIN'
+  theme     String   @default("blue")
+  createdAt DateTime @default(now())
+  domains   Domain[]
+}
+
+model Domain {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  domainName      String
+  priority        String   @default("Normal") // High, Normal, Low
+  
+  // สถานะเว็บ (Uptime)
+  isAlive         Boolean  @default(true)
+  lastError       String?
+
+  // ข้อมูล SSL
+  issuer          String?
+  sslValidTo      DateTime?
+  sslDaysLeft     Int?
+
+  // ข้อมูล Domain WHOIS
+  domainValidTo   DateTime?
+  domainDaysLeft  Int?
+
+  lastChecked     DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@unique([domainName, userId])
+}
