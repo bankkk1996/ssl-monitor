@@ -1,5 +1,4 @@
 {
-  "$comment": "The app moved to Cloudflare (ssl.sorawich.in.th). This keeps the old Vercel URL redirecting there.",
   "redirects": [
     { "source": "/(.*)", "destination": "https://ssl.sorawich.in.th/", "permanent": true }
   ]
