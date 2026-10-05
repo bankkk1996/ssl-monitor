@@ -24,12 +24,13 @@
       "migrations_dir": "migrations"
     }
   ],
-  // Hourly: refresh registration expiry for a few domains per run (each domain about once a day).
-  "triggers": { "crons": ["17 * * * *"] },
+  // Every 30 min: dispatch the GitHub checker workflow and refresh registration expiry for a few domains.
+  "triggers": { "crons": ["*/30 * * * *"] },
   "vars": {
     // Same Cloudflare Access application as finance.sorawich.in.th (ssl.sorawich.in.th is one of its destinations).
     "ACCESS_TEAM_DOMAIN": "proud-scene-79c2.cloudflareaccess.com",
     "ACCESS_AUD": "72adac8583b623ad01fc97dc8108966e60beec34b0ad6014ffd00ba35b72cf11"
   }
-  // Secret: INGEST_TOKEN (shared with the checker workflow as SSL_MONITOR_TOKEN)
+  // Secrets: INGEST_TOKEN (shared with the checker workflow as SSL_MONITOR_TOKEN),
+  //          GITHUB_DISPATCH_TOKEN (fine-grained PAT: personal-website, Actions read & write)
 }

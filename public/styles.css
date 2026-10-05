@@ -47,6 +47,7 @@ button, input, select { font: inherit; color: inherit; }
 
 main { max-width: 900px; margin: 0 auto; padding: 4px 16px 32px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .alert { padding: 12px 14px; border-radius: 12px; background: var(--critical-soft); border: 1px solid var(--critical); }
+.alert.warn { white-space: pre-line; background: var(--warning-soft); border-color: var(--warning); }
 
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; min-width: 0; }

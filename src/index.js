@@ -4,7 +4,9 @@
 // - /api/ingest/* is for the GitHub Actions checker (Bearer INGEST_TOKEN). Workers cannot read a
 //   server's TLS certificate, so certificate checks run there and results are posted back here.
 // - Domain registration expiry (RDAP, falling back to WHOIS) is checked here: when a domain is
-//   added, and by the hourly cron trigger (a few domains per run, each about once a day).
+//   added, and by the cron trigger (a few domains per run, each about once a day).
+// - GitHub's own schedule is unreliable (runs get delayed or dropped), so the cron trigger also
+//   dispatches the checker workflow every 30 minutes; GitHub's schedule stays as a backup.
 //
 // Workers Free allows 50 subrequests and 50 D1 queries per invocation, so every handler keeps
 // its work per invocation bounded no matter how many domains are monitored.
@@ -17,7 +19,8 @@ const SSL_LEVELS = [14, 7, 3, 1, 0];
 const DOMAIN_LEVELS = [60, 30, 14, 7, 3, 1, 0];
 const DAY = 86_400_000;
 const APP_URL = 'https://ssl.sorawich.in.th';
-const CRON_BATCH = 5;          // domains per cron run; each lookup may take several subrequests
+const CRON_BATCH = 4;          // domains per cron run; each lookup may take several subrequests
+const CHECKER_WORKFLOW = 'https://api.github.com/repos/bankkk1996/personal-website/actions/workflows/ssl-monitor.yml/dispatches';
 const INGEST_BATCH = 25;       // results accepted per /api/ingest/results call (checker sends 20)
 
 export default {
@@ -44,8 +47,10 @@ export default {
     }
   },
 
-  // Hourly: refresh registration expiry for the few domains checked longest ago (> 20 h).
+  // Every 30 minutes: start the checker, then refresh registration expiry for the few domains
+  // checked longest ago (> 20 h).
   async scheduled(event, env, ctx) {
+    await dispatchChecker(env);
     const { results } = await env.DB.prepare(
       `SELECT id, domain, registered_domain FROM domains
         WHERE domain_checked_at IS NULL OR domain_checked_at < ?
@@ -65,6 +70,12 @@ async function route(request, url, env, user) {
   const m = pathname.match(/^\/api\/domains\/(\d+)(\/refresh)?$/);
 
   if (pathname === '/api/me' && method === 'GET') return json({ email: user.email });
+
+  if (pathname === '/api/status' && method === 'GET') {
+    const dispatch = await env.DB.prepare("SELECT value, updated_at FROM meta WHERE key = 'last_dispatch'").first();
+    const last = await env.DB.prepare('SELECT MAX(ssl_checked_at) AS t FROM domains').first('t');
+    return json({ lastSslCheck: last, dispatch: dispatch ? { ...JSON.parse(dispatch.value), at: dispatch.updated_at } : null });
+  }
 
   if (pathname === '/api/domains' && method === 'GET') {
     const { results } = await env.DB.prepare('SELECT * FROM domains ORDER BY domain').all();
@@ -168,6 +179,41 @@ async function checkAlive(env, row) {
   if (opaque && row.ssl_checked_at) return;
   await env.DB.prepare('UPDATE domains SET is_alive = ?, http_status = ?, last_error = ? WHERE id = ?')
     .bind(isAlive, status, error, row.id).run();
+}
+
+// Ask GitHub to run the checker now. The outcome is stored so the UI can flag a broken token.
+async function dispatchChecker(env) {
+  if (!env.GITHUB_DISPATCH_TOKEN) return;
+  let result;
+  try {
+    const res = await fetch(CHECKER_WORKFLOW, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.GITHUB_DISPATCH_TOKEN}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'sorawich-ssl-monitor',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ref: 'main' }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.ok) {
+      result = { ok: true };
+    } else {
+      const text = await res.text();
+      let msg = text;
+      try { msg = JSON.parse(text).message || text; } catch {}
+      result = { ok: false, error: `GitHub ${res.status}: ${msg.slice(0, 120)}` };
+    }
+  } catch (err) {
+    result = { ok: false, error: String(err.message || err).slice(0, 150) };
+  }
+  if (!result.ok) console.error('checker dispatch failed', result.error);
+  await env.DB.prepare(
+    `INSERT INTO meta (key, value, updated_at) VALUES ('last_dispatch', ?, ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).bind(JSON.stringify(result), iso(Date.now())).run();
 }
 
 async function refreshRegistration(env, row) {

@@ -106,8 +106,24 @@ function render() {
 }
 
 async function load() {
-  domains = await api('/domains');
+  const [list, status] = await Promise.all([api('/domains'), api('/status')]);
+  domains = list;
   render();
+  renderHealth(status);
+}
+
+// Make a stalled checker visible instead of silently showing stale SSL data.
+function renderHealth({ lastSslCheck, dispatch }) {
+  const problems = [];
+  const hours = lastSslCheck ? (Date.now() - Date.parse(lastSslCheck)) / 3_600_000 : null;
+  if (domains.length && hours !== null && hours > 2) {
+    problems.push(`⚠ ตัวเช็ก SSL ไม่ได้รันมา ${Math.floor(hours)} ชั่วโมง (ล่าสุด ${timeFmt.format(new Date(lastSslCheck))})`);
+  }
+  if (dispatch && !dispatch.ok) {
+    problems.push(`⚠ สั่งรันตัวเช็กบน GitHub ไม่สำเร็จ: ${dispatch.error} — token อาจหมดอายุ`);
+  }
+  $('#health').textContent = problems.join('\n');
+  $('#health').hidden = !problems.length;
 }
 
 $('#addForm').addEventListener('submit', async (e) => {

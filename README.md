@@ -9,11 +9,14 @@ checker/check.mjs ── TLS handshake ──▶ /api/ingest/results  ── ale
   reads served certificate,            stores results, decides alerts
   HTTPS GET for uptime                 (state changes / thresholds only)
                                        RDAP/WHOIS registration expiry
-                                       on add + hourly cron (5 per run)
+                                       on add + cron (4 per run)
 ```
 
 Workers cannot read a server's certificate, so certificate checks run on GitHub Actions
 (`.github/workflows/ssl-monitor.yml` in `bankkk1996/personal-website`, which holds the LINE secrets).
+GitHub's own schedule is unreliable, so the Worker's cron dispatches that workflow every 30 minutes
+(GitHub's schedule stays as a backup). The UI warns when no check has landed for 2 hours or the
+last dispatch failed (e.g. an expired token).
 
 ## Alerts
 
@@ -35,7 +38,8 @@ Each threshold alerts once; renewing resets it.
 
 ## Secrets
 
-- Worker: `INGEST_TOKEN` (`npx wrangler secret put INGEST_TOKEN`)
+- Worker: `INGEST_TOKEN` (`npx wrangler secret put INGEST_TOKEN`) and `GITHUB_DISPATCH_TOKEN`
+  (fine-grained PAT, repository `personal-website` only, permission Actions: read and write)
 - Checker workflow: `SSL_MONITOR_TOKEN` (same value), `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_USER_ID`
 
 The checker reaches the Worker on `ssl-monitor.banksine1735.workers.dev`, where only `/api/ingest/*` is served.
