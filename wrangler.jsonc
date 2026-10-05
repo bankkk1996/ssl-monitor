@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ssl-monitor",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  // The UI/API live on ssl.sorawich.in.th behind Cloudflare Access.
+  // workers.dev is enabled only for the checker's /api/ingest/* (Bearer INGEST_TOKEN); everything else 404s there.
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "ssl.sorawich.in.th", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    // Let the Worker see every request so workers.dev can refuse everything but /api/ingest.
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ssl-monitor-db",
+      "database_id": "4f8adbd9-2a82-4b4d-a0f4-84ba79fdd0ab",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Refresh domain registration expiry once a day (09:17 Thailand time).
+  "triggers": { "crons": ["17 2 * * *"] },
+  "vars": {
+    // Same Cloudflare Access application as finance.sorawich.in.th (ssl.sorawich.in.th is one of its destinations).
+    "ACCESS_TEAM_DOMAIN": "proud-scene-79c2.cloudflareaccess.com",
+    "ACCESS_AUD": "72adac8583b623ad01fc97dc8108966e60beec34b0ad6014ffd00ba35b72cf11"
+  }
+  // Secret: INGEST_TOKEN (shared with the checker workflow as SSL_MONITOR_TOKEN)
+}
