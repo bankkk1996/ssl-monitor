@@ -12,6 +12,7 @@ import tls from 'node:tls';
 const API = (process.env.SSL_MONITOR_API || '').replace(/\/$/, '');
 const TOKEN = process.env.SSL_MONITOR_TOKEN;
 const CONCURRENCY = 5;
+const POST_BATCH = 20; // the Worker accepts at most 25 results per request (Workers Free query limits)
 const TIMEOUT_MS = 10_000;
 
 if (!API || !TOKEN) {
@@ -99,6 +100,26 @@ const results = [];
 for (let i = 0; i < domains.length; i += CONCURRENCY) {
   results.push(...(await Promise.all(domains.slice(i, i + CONCURRENCY).map(checkOne))));
 }
-const { updated, alerts } = await api('/api/ingest/results', { method: 'POST', body: JSON.stringify({ results }) });
+let updated = 0;
+const alerts = [];
+for (let i = 0; i < results.length; i += POST_BATCH) {
+  const res = await api('/api/ingest/results', { method: 'POST', body: JSON.stringify({ results: results.slice(i, i + POST_BATCH) }) });
+  updated += res.updated;
+  alerts.push(...res.alerts);
+}
 console.log(`Stored ${updated} result(s), ${alerts.length} alert(s)`);
-for (const text of alerts) await sendLine(text);
+
+// One LINE message per run (the free plan has a monthly message quota): merge every alert, keep
+// the app link once at the end, and split only if the text exceeds LINE's 5,000-character limit.
+if (alerts.length) {
+  const lines = alerts.flatMap((t) => t.split('\n'));
+  const link = lines.find((l) => l.startsWith('https://'));
+  const body = lines.filter((l) => l !== link);
+  const chunks = [''];
+  for (const line of body) {
+    if ((chunks.at(-1) + line).length > 4_500) chunks.push('');
+    chunks[chunks.length - 1] += `${line}\n`;
+  }
+  if (link) chunks[chunks.length - 1] += link;
+  for (const text of chunks) await sendLine(text.trim());
+}

@@ -9,7 +9,7 @@ checker/check.mjs ── TLS handshake ──▶ /api/ingest/results  ── ale
   reads served certificate,            stores results, decides alerts
   HTTPS GET for uptime                 (state changes / thresholds only)
                                        RDAP/WHOIS registration expiry
-                                       on add + daily cron
+                                       on add + hourly cron (5 per run)
 ```
 
 Workers cannot read a server's certificate, so certificate checks run on GitHub Actions

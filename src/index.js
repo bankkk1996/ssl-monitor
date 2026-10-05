@@ -4,7 +4,10 @@
 // - /api/ingest/* is for the GitHub Actions checker (Bearer INGEST_TOKEN). Workers cannot read a
 //   server's TLS certificate, so certificate checks run there and results are posted back here.
 // - Domain registration expiry (RDAP, falling back to WHOIS) is checked here: when a domain is
-//   added, and daily by the cron trigger.
+//   added, and by the hourly cron trigger (a few domains per run, each about once a day).
+//
+// Workers Free allows 50 subrequests and 50 D1 queries per invocation, so every handler keeps
+// its work per invocation bounded no matter how many domains are monitored.
 
 import { connect } from 'cloudflare:sockets';
 
@@ -14,6 +17,8 @@ const SSL_LEVELS = [14, 7, 3, 1, 0];
 const DOMAIN_LEVELS = [60, 30, 14, 7, 3, 1, 0];
 const DAY = 86_400_000;
 const APP_URL = 'https://ssl.sorawich.in.th';
+const CRON_BATCH = 5;          // domains per cron run; each lookup may take several subrequests
+const INGEST_BATCH = 25;       // results accepted per /api/ingest/results call (checker sends 20)
 
 export default {
   async fetch(request, env) {
@@ -39,12 +44,13 @@ export default {
     }
   },
 
-  // Daily: refresh registration expiry for every domain not checked in the last 20 hours.
+  // Hourly: refresh registration expiry for the few domains checked longest ago (> 20 h).
   async scheduled(event, env, ctx) {
     const { results } = await env.DB.prepare(
-      `SELECT id, domain FROM domains
-        WHERE domain_checked_at IS NULL OR domain_checked_at < ?`
-    ).bind(iso(Date.now() - 20 * 3600_000)).all();
+      `SELECT id, domain, registered_domain FROM domains
+        WHERE domain_checked_at IS NULL OR domain_checked_at < ?
+        ORDER BY domain_checked_at IS NOT NULL, domain_checked_at LIMIT ?`
+    ).bind(iso(Date.now() - 20 * 3600_000), CRON_BATCH).all();
     for (const row of results) {
       await refreshRegistration(env, row).catch((err) => console.error(row.domain, err));
     }
@@ -252,11 +258,15 @@ async function ingest(request, url, env) {
   if (url.pathname === '/api/ingest/results' && request.method === 'POST') {
     const { results } = await readJson(request);
     if (!Array.isArray(results)) throw new HttpError(400, 'results must be an array');
+    if (results.length > INGEST_BATCH) throw new HttpError(413, `send at most ${INGEST_BATCH} results per request`);
     const now = Date.now();
     const alerts = [];
     const updates = [];
-    for (const r of results.slice(0, 500)) {
-      const prev = await env.DB.prepare('SELECT * FROM domains WHERE id = ?').bind(Number(r.id)).first();
+    // One query for all previous rows (D1 allows only 50 queries per invocation on Workers Free).
+    const { results: rows } = await env.DB.prepare('SELECT * FROM domains').all();
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    for (const r of results) {
+      const prev = byId.get(Number(r.id));
       if (!prev) continue;
       const next = {
         is_alive: r.alive ? 1 : 0,
