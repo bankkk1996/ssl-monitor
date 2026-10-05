@@ -20,10 +20,12 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Validate HTML
-        run: npx --yes html-validate@9 "public/**/*.html"
-      - name: Check JavaScript syntax
-        run: node --check public/app.js && node --check checker/check.mjs
+          cache: npm
+      - run: npm ci
+      - name: Typecheck and build
+        run: npm run build
+      - name: Extra checks
+        run: node --check checker/check.mjs && node --check worker/index.js
       - name: Dry-run deploy
         run: npx --yes wrangler@4.147.0 deploy --dry-run
 
@@ -40,8 +42,17 @@ jobs:
     steps:
       - name: Skip when no Cloudflare token is configured
         if: env.HAS_TOKEN != 'true'
-        run: echo "::notice::CLOUDFLARE_API_TOKEN secret is not set - skipping deploy (deploy locally with npx wrangler deploy)."
+        run: echo "::notice::CLOUDFLARE_API_TOKEN secret is not set - skipping deploy (deploy locally with npm run deploy)."
       - uses: actions/checkout@v5
+        if: env.HAS_TOKEN == 'true'
+      - uses: actions/setup-node@v5
+        if: env.HAS_TOKEN == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build
+        if: env.HAS_TOKEN == 'true'
+        run: npm ci && npm run build
       - name: Deploy to Cloudflare Workers
         if: env.HAS_TOKEN == 'true'
         uses: cloudflare/wrangler-action@v3

@@ -31,8 +31,8 @@ Each threshold alerts once; renewing resets it.
 
 | Path | What |
 |---|---|
-| `src/index.js` | Worker: owner API (Access JWT), checker ingest (Bearer token), RDAP/WHOIS, alert rules, cron |
-| `public/` | UI (vanilla JS) |
+| `worker/index.js` | Worker: owner API (Access JWT), checker ingest (Bearer token), RDAP/WHOIS, alert rules, cron |
+| `src/` | UI: React + Vite + Tailwind v4 + [shadcn/ui](https://ui.shadcn.com) (`src/components/ui`), built to `dist/` |
 | `migrations/` | D1 schema |
 | `checker/check.mjs` | Node 20+ checker, no dependencies |
 
@@ -48,11 +48,15 @@ The checker reaches the Worker on `ssl-monitor.banksine1735.workers.dev`, where 
 
 ```sh
 printf 'DEV_BYPASS_AUTH=true\nINGEST_TOKEN=local-test-token\n' > .dev.vars
+npm install
 npx wrangler d1 migrations apply ssl-monitor-db --local
-npx wrangler dev --port 8789
+npm run build && npx wrangler dev --port 8789   # full app on :8789
+npm run dev                                      # or: UI with hot reload on :5173 (proxies /api to :8789)
 SSL_MONITOR_API=http://localhost:8789 SSL_MONITOR_TOKEN=local-test-token node checker/check.mjs
 ```
 
-Deploy: `npx wrangler d1 migrations apply ssl-monitor-db --remote && npx wrangler deploy`.
+Add shadcn components with `npx shadcn@latest add <name>` (check the generated import is `@/lib/utils`).
+
+Deploy: `npx wrangler d1 migrations apply ssl-monitor-db --remote && npm run deploy`.
 
 *Earlier version (Vercel + Prisma/Postgres + Supabase auth + Resend) is in the git history.*

@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ssl-monitor",
-  "main": "src/index.js",
+  "main": "worker/index.js",
   "compatibility_date": "2026-10-01",
   // The UI/API live on ssl.sorawich.in.th behind Cloudflare Access.
   // workers.dev is enabled only for the checker's /api/ingest/* (Bearer INGEST_TOKEN); everything else 404s there.
@@ -11,7 +11,7 @@
     { "pattern": "ssl.sorawich.in.th", "custom_domain": true }
   ],
   "assets": {
-    "directory": "./public",
+    "directory": "./dist",
     "binding": "ASSETS",
     // Let the Worker see every request so workers.dev can refuse everything but /api/ingest.
     "run_worker_first": true
